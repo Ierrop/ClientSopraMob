@@ -32,6 +32,14 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.IOException;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -66,6 +74,8 @@ public class DemoActivity extends Activity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        
+		
         setContentView(R.layout.main);
         mDisplay = (TextView) findViewById(R.id.display);
 
@@ -77,6 +87,7 @@ public class DemoActivity extends Activity {
             regid = getRegistrationId(context);
            Log.i("idTrololo",regid);
            Toast.makeText(this, regid, Toast.LENGTH_LONG).show();
+//           sendRegistrationIdToBackend();
             if (regid.isEmpty()) {
                 registerInBackground();
             }
@@ -266,6 +277,71 @@ public class DemoActivity extends Activity {
      * to a server that echoes back the message using the 'from' address in the message.
      */
     private void sendRegistrationIdToBackend() {
-      // Your implementation here.
+    	new AsyncTask<Void, Void, String>() {
+            @Override
+            protected String doInBackground(Void... params) {
+            	Map<String,String> lol=new HashMap<String, String>();
+        		lol.put("id", regid);
+        		try {
+        			postRequest(Data.serveurURL, lol);
+        		} catch (IOException e) {
+        			return "fail";
+        		}
+                return "ok";
+            }
+
+            @Override
+            protected void onPostExecute(String msg) {
+                mDisplay.append(msg + "\n");
+            }
+        }.execute(null, null, null);
+    	
     }
+    
+    /*public static void main(String[] args) throws IOException {
+		Map<String,String> lol=new HashMap<String, String>();
+		lol.put("id", "helllo");
+		postRequest("http://192.168.0.17:8080/sopraMob/Register", lol);
+	}*/
+
+   private static void postRequest(String serverUrl, Map<String, String> parameters) throws IOException {
+      URL url;
+      try {
+         url = new URL(serverUrl);
+      } catch (MalformedURLException e) {
+         throw new IllegalArgumentException("Wrong URL: " + serverUrl);
+      }
+
+      StringBuilder requestBody = new StringBuilder();
+      Iterator<Entry<String, String>> it = parameters.entrySet().iterator();
+      while (it.hasNext()) {
+         Entry<String, String> entry = it.next();
+         requestBody.append(entry.toString());
+         if (it.hasNext()) {
+            requestBody.append('&');
+         }
+      }
+
+      byte[] data = requestBody.toString().getBytes();
+      HttpURLConnection conn = null;
+      try {
+         conn = (HttpURLConnection) url.openConnection();
+         conn.setDoOutput(true);
+         conn.setUseCaches(false);
+         conn.setFixedLengthStreamingMode(data.length);
+         conn.setRequestMethod("POST");
+         conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8");
+         OutputStream out = conn.getOutputStream();
+         out.write(data);
+         out.close();
+         int status = conn.getResponseCode();
+         if (status != 200) {
+            throw new IOException("Request failed with status: " + status);
+         }
+      } finally {
+         if (conn != null) {
+            conn.disconnect();
+         }
+      }
+   }
 }
