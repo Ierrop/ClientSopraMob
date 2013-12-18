@@ -15,10 +15,21 @@
  */
 package com.google.android.gcm.demo.app;
 
-import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.common.GooglePlayServicesUtil;
-import com.google.android.gms.gcm.GoogleCloudMessaging;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import android.accounts.Account;
+import android.accounts.AccountManager;
 import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -31,16 +42,9 @@ import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.concurrent.atomic.AtomicInteger;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.GooglePlayServicesUtil;
+import com.google.android.gms.gcm.GoogleCloudMessaging;
 
 /**
  * Main UI for the demo app.
@@ -87,7 +91,7 @@ public class DemoActivity extends Activity {
             regid = getRegistrationId(context);
            Log.i("idTrololo",regid);
            Toast.makeText(this, regid, Toast.LENGTH_LONG).show();
-//           sendRegistrationIdToBackend();
+           sendRegistrationIdToBackend();
             if (regid.isEmpty()) {
                 registerInBackground();
             }
@@ -112,8 +116,9 @@ public class DemoActivity extends Activity {
         int resultCode = GooglePlayServicesUtil.isGooglePlayServicesAvailable(this);
         if (resultCode != ConnectionResult.SUCCESS) {
             if (GooglePlayServicesUtil.isUserRecoverableError(resultCode)) {
-                GooglePlayServicesUtil.getErrorDialog(resultCode, this,
-                        PLAY_SERVICES_RESOLUTION_REQUEST).show();
+            	Toast.makeText(this, "Connexion error", Toast.LENGTH_LONG).show();
+//                GooglePlayServicesUtil.getErrorDialog(resultCode, this,
+//                        PLAY_SERVICES_RESOLUTION_REQUEST).show();
             } else {
                 Log.i(TAG, "This device is not supported.");
                 finish();
@@ -282,6 +287,8 @@ public class DemoActivity extends Activity {
             protected String doInBackground(Void... params) {
             	Map<String,String> lol=new HashMap<String, String>();
         		lol.put("id", regid);
+        		lol.put("phoneType", "GOOGLE");
+        		lol.put("phoneOwner", getUsername());
         		try {
         			postRequest(Data.serveurURL, lol);
         		} catch (IOException e) {
@@ -296,6 +303,28 @@ public class DemoActivity extends Activity {
             }
         }.execute(null, null, null);
     	
+    }
+    
+    public String getUsername(){
+        AccountManager manager = AccountManager.get(this); 
+        Account[] accounts = manager.getAccountsByType("com.google"); 
+        List<String> possibleEmails = new LinkedList<String>();
+
+        for (Account account : accounts) {
+          // TODO: Check possibleEmail against an email regex or treat
+          // account.name as an email address only for certain account.type values.
+          possibleEmails.add(account.name);
+        }
+
+        if(!possibleEmails.isEmpty() && possibleEmails.get(0) != null){
+            String email = possibleEmails.get(0);
+            String[] parts = email.split("@");
+            if(parts.length > 0 && parts[0] != null)
+                return parts[0];
+            else
+                return "NullOwner";
+        }else
+            return "NullOwner";
     }
     
     /*public static void main(String[] args) throws IOException {
