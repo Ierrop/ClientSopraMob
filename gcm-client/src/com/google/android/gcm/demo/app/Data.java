@@ -2,6 +2,6 @@ package com.google.android.gcm.demo.app;
 
 public class Data {
 
-	protected static String serveurURL = "http://172.20.252.197:8080/sopraMob/Register";
+	public static String serveurURL = "http://192.168.43.45:8080/sopraMob/Register";
 
 }

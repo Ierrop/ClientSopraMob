@@ -37,8 +37,11 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.text.InputFilter;
+import android.text.Spanned;
 import android.util.Log;
 import android.view.View;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -51,326 +54,354 @@ import com.google.android.gms.gcm.GoogleCloudMessaging;
  */
 public class DemoActivity extends Activity {
 
-    public static final String EXTRA_MESSAGE = "message";
-    public static final String PROPERTY_REG_ID = "registration_id";
-    private static final String PROPERTY_APP_VERSION = "appVersion";
-    private static final int PLAY_SERVICES_RESOLUTION_REQUEST = 9000;
+	public static final String EXTRA_MESSAGE = "message";
+	public static final String PROPERTY_REG_ID = "registration_id";
+	private static final String PROPERTY_APP_VERSION = "appVersion";
 
-    /**
-     * Substitute you own sender ID here. This is the project number you got
-     * from the API Console, as described in "Getting Started."
-     */
-    String SENDER_ID = "968947276795";
+	/**
+	 * Substitute you own sender ID here. This is the project number you got
+	 * from the API Console, as described in "Getting Started."
+	 */
+	String SENDER_ID = "968947276795";
 
-    /**
-     * Tag used on log messages.
-     */
-    static final String TAG = "GCM Demo";
+	/**
+	 * Tag used on log messages.
+	 */
+	static final String TAG = "GCM Demo";
 
-    TextView mDisplay;
-    GoogleCloudMessaging gcm;
-    AtomicInteger msgId = new AtomicInteger();
-    Context context;
+	TextView mDisplay;
+	GoogleCloudMessaging gcm;
+	AtomicInteger msgId = new AtomicInteger();
+	Context context;
 
-    String regid;
+	String regid;
+	EditText textArea;
 
-    @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+	@Override
+	public void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
 
-        
-		
-        setContentView(R.layout.main);
-        mDisplay = (TextView) findViewById(R.id.display);
+		setContentView(R.layout.main);
+		mDisplay = (TextView) findViewById(R.id.display);
+		textArea = (EditText) findViewById(R.id.textArea);
 
-        context = getApplicationContext();
+		InputFilter filter = new InputFilter() {
 
-        // Check device for Play Services APK. If check succeeds, proceed with GCM registration.
-        if (checkPlayServices()) {
-            gcm = GoogleCloudMessaging.getInstance(this);
-            regid = getRegistrationId(context);
-           Log.i("idTrololo",regid);
-           Toast.makeText(this, regid, Toast.LENGTH_LONG).show();
-           sendRegistrationIdToBackend();
-            if (regid.isEmpty()) {
-                registerInBackground();
-            }
-        } else {
-            Log.i(TAG, "No valid Google Play Services APK found.");
-        }
-    }
+			@Override
+			public CharSequence filter(CharSequence source, int start, int end,
+					Spanned dest, int dstart, int dend) {
+				for (int i = start; i < end; i++) {
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        // Check device for Play Services APK.
-        checkPlayServices();
-    }
+					if (!(Character.isDigit(source.charAt(i)) || source
+							.charAt(i) == '.')) {
+						return "";
+					}
+				}
 
-    /**
-     * Check the device to make sure it has the Google Play Services APK. If
-     * it doesn't, display a dialog that allows users to download the APK from
-     * the Google Play Store or enable it in the device's system settings.
-     */
-    private boolean checkPlayServices() {
-        int resultCode = GooglePlayServicesUtil.isGooglePlayServicesAvailable(this);
-        if (resultCode != ConnectionResult.SUCCESS) {
-            if (GooglePlayServicesUtil.isUserRecoverableError(resultCode)) {
-            	Toast.makeText(this, "Connexion error", Toast.LENGTH_LONG).show();
-//                GooglePlayServicesUtil.getErrorDialog(resultCode, this,
-//                        PLAY_SERVICES_RESOLUTION_REQUEST).show();
-            } else {
-                Log.i(TAG, "This device is not supported.");
-                finish();
-            }
-            return false;
-        }
-        return true;
-    }
+				return null;
+			}
+		};
 
-    /**
-     * Stores the registration ID and the app versionCode in the application's
-     * {@code SharedPreferences}.
-     *
-     * @param context application's context.
-     * @param regId registration ID
-     */
-    private void storeRegistrationId(Context context, String regId) {
-        final SharedPreferences prefs = getGcmPreferences(context);
-        int appVersion = getAppVersion(context);
-        Log.i(TAG, "Saving regId on app version " + appVersion);
-        SharedPreferences.Editor editor = prefs.edit();
-        editor.putString(PROPERTY_REG_ID, regId);
-        editor.putInt(PROPERTY_APP_VERSION, appVersion);
-        editor.commit();
-    }
+		textArea.setFilters(new InputFilter[] { filter });
 
-    /**
-     * Gets the current registration ID for application on GCM service, if there is one.
-     * <p>
-     * If result is empty, the app needs to register.
-     *
-     * @return registration ID, or empty string if there is no existing
-     *         registration ID.
-     */
-    private String getRegistrationId(Context context) {
-        final SharedPreferences prefs = getGcmPreferences(context);
-        String registrationId = prefs.getString(PROPERTY_REG_ID, "");
-        if (registrationId.isEmpty()) {
-            Log.i(TAG, "Registration not found.");
-            return "";
-        }
-        // Check if app was updated; if so, it must clear the registration ID
-        // since the existing regID is not guaranteed to work with the new
-        // app version.
-        int registeredVersion = prefs.getInt(PROPERTY_APP_VERSION, Integer.MIN_VALUE);
-        int currentVersion = getAppVersion(context);
-        if (registeredVersion != currentVersion) {
-            Log.i(TAG, "App version changed.");
-            return "";
-        }
-        return registrationId;
-    }
+		context = getApplicationContext();
 
-    /**
-     * Registers the application with GCM servers asynchronously.
-     * <p>
-     * Stores the registration ID and the app versionCode in the application's
-     * shared preferences.
-     */
-    private void registerInBackground() {
-        new AsyncTask<Void, Void, String>() {
-            @Override
-            protected String doInBackground(Void... params) {
-                String msg = "";
-                try {
-                    if (gcm == null) {
-                        gcm = GoogleCloudMessaging.getInstance(context);
-                    }
-                    regid = gcm.register(SENDER_ID);
-                    
-                    msg = "Device registered, registration ID=" + regid;
+		// Check device for Play Services APK. If check succeeds, proceed with
+		// GCM registration.
+		if (checkPlayServices()) {
+			gcm = GoogleCloudMessaging.getInstance(this);
+			regid = getRegistrationId(context);
+			Log.i("idTrololo", regid);
+			Toast.makeText(this, regid, Toast.LENGTH_LONG).show();
+			sendRegistrationIdToBackend();
+			if (regid.isEmpty()) {
+				registerInBackground();
+			}
+		} else {
+			Log.i(TAG, "No valid Google Play Services APK found.");
+		}
+	}
 
-                    // You should send the registration ID to your server over HTTP, so it
-                    // can use GCM/HTTP or CCS to send messages to your app.
-                    sendRegistrationIdToBackend();
+	@Override
+	protected void onResume() {
+		super.onResume();
+		// Check device for Play Services APK.
+		checkPlayServices();
+	}
 
-                    // For this demo: we don't need to send it because the device will send
-                    // upstream messages to a server that echo back the message using the
-                    // 'from' address in the message.
+	/**
+	 * Check the device to make sure it has the Google Play Services APK. If it
+	 * doesn't, display a dialog that allows users to download the APK from the
+	 * Google Play Store or enable it in the device's system settings.
+	 */
+	private boolean checkPlayServices() {
+		int resultCode = GooglePlayServicesUtil
+				.isGooglePlayServicesAvailable(this);
+		if (resultCode != ConnectionResult.SUCCESS) {
+			if (GooglePlayServicesUtil.isUserRecoverableError(resultCode)) {
+				Toast.makeText(this, "Connexion error", Toast.LENGTH_LONG)
+						.show();
+				// GooglePlayServicesUtil.getErrorDialog(resultCode, this,
+				// PLAY_SERVICES_RESOLUTION_REQUEST).show();
+			} else {
+				Log.i(TAG, "This device is not supported.");
+				finish();
+			}
+			return false;
+		}
+		return true;
+	}
 
-                    // Persist the regID - no need to register again.
-                    storeRegistrationId(context, regid);
-                } catch (IOException ex) {
-                    msg = "Error :" + ex.getMessage();
-                    // If there is an error, don't just keep trying to register.
-                    // Require the user to click a button again, or perform
-                    // exponential back-off.
-                }
-                return msg;
-            }
+	/**
+	 * Stores the registration ID and the app versionCode in the application's
+	 * {@code SharedPreferences}.
+	 * 
+	 * @param context
+	 *            application's context.
+	 * @param regId
+	 *            registration ID
+	 */
+	private void storeRegistrationId(Context context, String regId) {
+		final SharedPreferences prefs = getGcmPreferences(context);
+		int appVersion = getAppVersion(context);
+		Log.i(TAG, "Saving regId on app version " + appVersion);
+		SharedPreferences.Editor editor = prefs.edit();
+		editor.putString(PROPERTY_REG_ID, regId);
+		editor.putInt(PROPERTY_APP_VERSION, appVersion);
+		editor.commit();
+	}
 
-            @Override
-            protected void onPostExecute(String msg) {
-                mDisplay.append(msg + "\n");
-            }
-        }.execute(null, null, null);
-    }
+	/**
+	 * Gets the current registration ID for application on GCM service, if there
+	 * is one.
+	 * <p>
+	 * If result is empty, the app needs to register.
+	 * 
+	 * @return registration ID, or empty string if there is no existing
+	 *         registration ID.
+	 */
+	private String getRegistrationId(Context context) {
+		final SharedPreferences prefs = getGcmPreferences(context);
+		String registrationId = prefs.getString(PROPERTY_REG_ID, "");
+		if (registrationId.isEmpty()) {
+			Log.i(TAG, "Registration not found.");
+			return "";
+		}
+		// Check if app was updated; if so, it must clear the registration ID
+		// since the existing regID is not guaranteed to work with the new
+		// app version.
+		int registeredVersion = prefs.getInt(PROPERTY_APP_VERSION,
+				Integer.MIN_VALUE);
+		int currentVersion = getAppVersion(context);
+		if (registeredVersion != currentVersion) {
+			Log.i(TAG, "App version changed.");
+			return "";
+		}
+		return registrationId;
+	}
 
-    // Send an upstream message.
-    public void onClick(final View view) {
+	/**
+	 * Registers the application with GCM servers asynchronously.
+	 * <p>
+	 * Stores the registration ID and the app versionCode in the application's
+	 * shared preferences.
+	 */
+	private void registerInBackground() {
+		new AsyncTask<Void, Void, String>() {
+			@Override
+			protected String doInBackground(Void... params) {
+				String msg = "";
+				try {
+					if (gcm == null) {
+						gcm = GoogleCloudMessaging.getInstance(context);
+					}
+					regid = gcm.register(SENDER_ID);
 
-        if (view == findViewById(R.id.send)) {
-            new AsyncTask<Void, Void, String>() {
-                @Override
-                protected String doInBackground(Void... params) {
-                    String msg = "";
-                    try {
-                        Bundle data = new Bundle();
-                        data.putString("my_message", "Hello World");
-                        data.putString("my_action", "com.google.android.gcm.demo.app.ECHO_NOW");
-                        String id = Integer.toString(msgId.incrementAndGet());
-                        gcm.send(SENDER_ID + "@gcm.googleapis.com", id, data);
-                        msg = "Sent message";
-                    } catch (IOException ex) {
-                        msg = "Error :" + ex.getMessage();
-                    }
-                    return msg;
-                }
+					msg = "Device registered, registration ID=" + regid;
 
-                @Override
-                protected void onPostExecute(String msg) {
-                    mDisplay.append(msg + "\n");
-                }
-            }.execute(null, null, null);
-        } else if (view == findViewById(R.id.clear)) {
-            mDisplay.setText("");
-        }
-    }
+					// You should send the registration ID to your server over
+					// HTTP, so it
+					// can use GCM/HTTP or CCS to send messages to your app.
+					sendRegistrationIdToBackend();
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-    }
+					// For this demo: we don't need to send it because the
+					// device will send
+					// upstream messages to a server that echo back the message
+					// using the
+					// 'from' address in the message.
 
-    /**
-     * @return Application's version code from the {@code PackageManager}.
-     */
-    private static int getAppVersion(Context context) {
-        try {
-            PackageInfo packageInfo = context.getPackageManager()
-                    .getPackageInfo(context.getPackageName(), 0);
-            return packageInfo.versionCode;
-        } catch (NameNotFoundException e) {
-            // should never happen
-            throw new RuntimeException("Could not get package name: " + e);
-        }
-    }
+					// Persist the regID - no need to register again.
+					storeRegistrationId(context, regid);
+				} catch (IOException ex) {
+					msg = "Error :" + ex.getMessage();
+					// If there is an error, don't just keep trying to register.
+					// Require the user to click a button again, or perform
+					// exponential back-off.
+				}
+				return msg;
+			}
 
-    /**
-     * @return Application's {@code SharedPreferences}.
-     */
-    private SharedPreferences getGcmPreferences(Context context) {
-        // This sample app persists the registration ID in shared preferences, but
-        // how you store the regID in your app is up to you.
-        return getSharedPreferences(DemoActivity.class.getSimpleName(),
-                Context.MODE_PRIVATE);
-    }
-    /**
-     * Sends the registration ID to your server over HTTP, so it can use GCM/HTTP or CCS to send
-     * messages to your app. Not needed for this demo since the device sends upstream messages
-     * to a server that echoes back the message using the 'from' address in the message.
-     */
-    private void sendRegistrationIdToBackend() {
-    	new AsyncTask<Void, Void, String>() {
-            @Override
-            protected String doInBackground(Void... params) {
-            	Map<String,String> lol=new HashMap<String, String>();
-        		lol.put("id", regid);
-        		lol.put("phoneType", "GOOGLE");
-        		lol.put("phoneOwner", getUsername());
-        		try {
-        			postRequest(Data.serveurURL, lol);
-        		} catch (IOException e) {
-        			return "fail";
-        		}
-                return "ok";
-            }
+			@Override
+			protected void onPostExecute(String msg) {
+				mDisplay.append(msg + "\n");
+			}
+		}.execute(null, null, null);
+	}
 
-            @Override
-            protected void onPostExecute(String msg) {
-                mDisplay.append(msg + "\n");
-            }
-        }.execute(null, null, null);
-    	
-    }
-    
-    public String getUsername(){
-        AccountManager manager = AccountManager.get(this); 
-        Account[] accounts = manager.getAccountsByType("com.google"); 
-        List<String> possibleEmails = new LinkedList<String>();
+	// Send an upstream message.
+	public void onClick(final View view) {
 
-        for (Account account : accounts) {
-          // TODO: Check possibleEmail against an email regex or treat
-          // account.name as an email address only for certain account.type values.
-          possibleEmails.add(account.name);
-        }
+		if (view == findViewById(R.id.ipSetter)) {
+			new AsyncTask<Void, Void, String>() {
+				@Override
+				protected String doInBackground(Void... params) {
+					String msg = "Ip set !";
 
-        if(!possibleEmails.isEmpty() && possibleEmails.get(0) != null){
-            String email = possibleEmails.get(0);
-            String[] parts = email.split("@");
-            if(parts.length > 0 && parts[0] != null)
-                return parts[0];
-            else
-                return "NullOwner";
-        }else
-            return "NullOwner";
-    }
-    
-    /*public static void main(String[] args) throws IOException {
-		Map<String,String> lol=new HashMap<String, String>();
-		lol.put("id", "helllo");
-		postRequest("http://192.168.0.17:8080/sopraMob/Register", lol);
-	}*/
+					String ip = textArea.getText().toString();
+					Data.serveurURL = "http://" + ip
+							+ ":8080/sopraMob/Register";
+					textArea.setHint(ip);
+					return msg;
+				}
 
-   private static void postRequest(String serverUrl, Map<String, String> parameters) throws IOException {
-      URL url;
-      try {
-         url = new URL(serverUrl);
-      } catch (MalformedURLException e) {
-         throw new IllegalArgumentException("Wrong URL: " + serverUrl);
-      }
+				@Override
+				protected void onPostExecute(String msg) {
+					mDisplay.append(msg + "\n");
+				}
+			}.execute(null, null, null);
+		}
+	}
 
-      StringBuilder requestBody = new StringBuilder();
-      Iterator<Entry<String, String>> it = parameters.entrySet().iterator();
-      while (it.hasNext()) {
-         Entry<String, String> entry = it.next();
-         requestBody.append(entry.toString());
-         if (it.hasNext()) {
-            requestBody.append('&');
-         }
-      }
+	@Override
+	protected void onDestroy() {
+		super.onDestroy();
+	}
 
-      byte[] data = requestBody.toString().getBytes();
-      HttpURLConnection conn = null;
-      try {
-         conn = (HttpURLConnection) url.openConnection();
-         conn.setDoOutput(true);
-         conn.setUseCaches(false);
-         conn.setFixedLengthStreamingMode(data.length);
-         conn.setRequestMethod("POST");
-         conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8");
-         OutputStream out = conn.getOutputStream();
-         out.write(data);
-         out.close();
-         int status = conn.getResponseCode();
-         if (status != 200) {
-            throw new IOException("Request failed with status: " + status);
-         }
-      } finally {
-         if (conn != null) {
-            conn.disconnect();
-         }
-      }
-   }
+	/**
+	 * @return Application's version code from the {@code PackageManager}.
+	 */
+	private static int getAppVersion(Context context) {
+		try {
+			PackageInfo packageInfo = context.getPackageManager()
+					.getPackageInfo(context.getPackageName(), 0);
+			return packageInfo.versionCode;
+		} catch (NameNotFoundException e) {
+			// should never happen
+			throw new RuntimeException("Could not get package name: " + e);
+		}
+	}
+
+	/**
+	 * @return Application's {@code SharedPreferences}.
+	 */
+	private SharedPreferences getGcmPreferences(Context context) {
+		// This sample app persists the registration ID in shared preferences,
+		// but
+		// how you store the regID in your app is up to you.
+		return getSharedPreferences(DemoActivity.class.getSimpleName(),
+				Context.MODE_PRIVATE);
+	}
+
+	/**
+	 * Sends the registration ID to your server over HTTP, so it can use
+	 * GCM/HTTP or CCS to send messages to your app. Not needed for this demo
+	 * since the device sends upstream messages to a server that echoes back the
+	 * message using the 'from' address in the message.
+	 */
+	private void sendRegistrationIdToBackend() {
+		new AsyncTask<Void, Void, String>() {
+			@Override
+			protected String doInBackground(Void... params) {
+				Map<String, String> lol = new HashMap<String, String>();
+				lol.put("id", regid);
+				lol.put("phoneType", "GOOGLE");
+				lol.put("phoneOwner", getUsername());
+				try {
+					postRequest(Data.serveurURL, lol);
+				} catch (IOException e) {
+					return "fail";
+				}
+				return "ok";
+			}
+
+			@Override
+			protected void onPostExecute(String msg) {
+				mDisplay.append(msg + "\n");
+			}
+		}.execute(null, null, null);
+
+	}
+
+	public String getUsername() {
+		AccountManager manager = AccountManager.get(this);
+		Account[] accounts = manager.getAccountsByType("com.google");
+		List<String> possibleEmails = new LinkedList<String>();
+
+		for (Account account : accounts) {
+			// TODO: Check possibleEmail against an email regex or treat
+			// account.name as an email address only for certain account.type
+			// values.
+			possibleEmails.add(account.name);
+		}
+
+		if (!possibleEmails.isEmpty() && possibleEmails.get(0) != null) {
+			String email = possibleEmails.get(0);
+			String[] parts = email.split("@");
+			if (parts.length > 0 && parts[0] != null)
+				return parts[0];
+			else
+				return "NullOwner";
+		} else
+			return "NullOwner";
+	}
+
+	/*
+	 * public static void main(String[] args) throws IOException {
+	 * Map<String,String> lol=new HashMap<String, String>(); lol.put("id",
+	 * "helllo"); postRequest("http://192.168.0.17:8080/sopraMob/Register",
+	 * lol); }
+	 */
+
+	private static void postRequest(String serverUrl,
+			Map<String, String> parameters) throws IOException {
+		URL url;
+		try {
+			url = new URL(serverUrl);
+		} catch (MalformedURLException e) {
+			throw new IllegalArgumentException("Wrong URL: " + serverUrl);
+		}
+
+		StringBuilder requestBody = new StringBuilder();
+		Iterator<Entry<String, String>> it = parameters.entrySet().iterator();
+		while (it.hasNext()) {
+			Entry<String, String> entry = it.next();
+			requestBody.append(entry.toString());
+			if (it.hasNext()) {
+				requestBody.append('&');
+			}
+		}
+
+		byte[] data = requestBody.toString().getBytes();
+		HttpURLConnection conn = null;
+		try {
+			conn = (HttpURLConnection) url.openConnection();
+			conn.setDoOutput(true);
+			conn.setUseCaches(false);
+			conn.setFixedLengthStreamingMode(data.length);
+			conn.setRequestMethod("POST");
+			conn.setRequestProperty("Content-Type",
+					"application/x-www-form-urlencoded;charset=UTF-8");
+			OutputStream out = conn.getOutputStream();
+			out.write(data);
+			out.close();
+			int status = conn.getResponseCode();
+			if (status != 200) {
+				throw new IOException("Request failed with status: " + status);
+			}
+		} finally {
+			if (conn != null) {
+				conn.disconnect();
+			}
+		}
+	}
 }
